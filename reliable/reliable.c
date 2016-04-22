@@ -21,7 +21,8 @@ static int eofrec = 0;
 static int eofread = 0;
 static int eofseqno = 0;
 uint32_t ackSeqNo = 0;
-uint32_t EOFLEN = 12;
+uint16_t datahdrlen = 16;
+uint16_t acklen = 12;
 
 struct packetnode {
 	int length;
@@ -161,9 +162,9 @@ rel_sendack(rel_t *r) {
 	//r->acknum++; //Not sure if this is necessary
 	ackpack->ackno = htonl((r->rec_sw->lfr + 1));
 	//ackpack->seqno = htonl(ackSeqNo);
-	ackpack->len = htons(sizeof(struct ack_packet)); //not sure if this is correct
-	ackpack->cksum = cksum(ackpack, sizeof(struct ack_packet));
-	conn_sendpkt(r->c, ackpack, sizeof(struct ack_packet));
+	ackpack->len = htons(acklen); //not sure if this is correct
+	ackpack->cksum = cksum(ackpack, acklen);
+	conn_sendpkt(r->c, ackpack, acklen);
 	free(ackpack);
 }
 
@@ -174,7 +175,7 @@ long long current_timestamp() {
     return milliseconds;
 }
 
-void send_packet(packet_t* pkt, rel_t* s, int index, int len) {
+void send_packet(packet_t* pkt, rel_t* s, int index, uint16_t len) {
 	fprintf(stderr, "send packet and update times");
 	s->times[index] = current_timestamp();
 	conn_sendpkt(s->c, pkt, len);
@@ -186,8 +187,8 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 	fprintf(stderr, "\nrecvpkt len: %d\n", ntohs(pkt->len));
 	fprintf(stderr, "my window size is %d", r->rec_sw->rws);
 
-	int ackSize = sizeof(struct ack_packet);
-	int dataPackSize = sizeof(pkt->data) + 12;
+	int ackSize = acklen;
+	int dataPackSize = sizeof(pkt->data) + datahdrlen;
 	if (htons(pkt->len) > dataPackSize || htons(pkt->len) < ackSize) {
 		return;
 	}
@@ -207,12 +208,12 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 		//fprintf(stderr, "dropped");
 		return;
 	}*/
-	else if (ntohs(pkt->len) < sizeof(struct ack_packet) || ntohs(pkt->len) > sizeof(pkt->data)+12) {
+	else if (ntohs(pkt->len) < acklen || ntohs(pkt->len) > sizeof(pkt->data)+datahdrlen) {
 		fprintf(stderr, "completely messed up packet");
 		return;
 	}
 	//Handle Ack Packet
-	else if (ntohs(pkt->len) == sizeof(struct ack_packet)) {
+	else if (ntohs(pkt->len) == acklen) {
 		fprintf(stderr,"ackkkkkkkkkkkkkk:%d, seqno=%d\n",ntohl(pkt->ackno), ntohl(pkt->seqno));
 
 		if (ntohl(pkt->ackno) > r->send_sw->lar) {
@@ -233,15 +234,14 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			r->senderbuffer[r->window_size - 1] = NULL;
 			r->times[r->window_size - 1] = 0;
 		}
-		rel_read(r);
 	}
 	// Handle a data packet
 	else {
 		fprintf(stderr, "datapacket!!:%d\n",ntohl(pkt->seqno));
 		fprintf(stderr, "%s", pkt->data);
-		if (pkt->data==NULL) {
-			rel_sendack(r);
-		}
+		//if (pkt->data==NULL) {
+		//	rel_sendack(r);
+		//}
 		if (ntohl(pkt->seqno) > r->rec_sw->laf) {
 			fprintf(stderr, "Packet is greater than largest acceptable frame");
 		}
@@ -251,7 +251,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 		}
 
 		else {
-			if (ntohs(pkt->len) == EOFLEN) {
+			if (ntohs(pkt->len) == datahdrlen) {
 				eofrec = 1;
 			}
 			int in = (ntohl(pkt->seqno) - (r->rec_sw->lfr + 1)) % (r->window_size);
@@ -262,6 +262,8 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			rel_sendack(r);
 		}
 	}
+	rel_read(r);
+
 }
 
 
@@ -284,13 +286,13 @@ rel_read (rel_t *s)
 			}
 			packet_t *temp = malloc(sizeof(packet_t));
 			int input = conn_input(s->c, temp->data, sizeof(temp->data));
-			uint16_t inputLen = input + 12;
+			uint16_t inputLen = input + datahdrlen;
 
 			if (input == -1) {
 				eofseqno = s->send_sw->lfs + 1;
-				inputLen = EOFLEN;
+				inputLen = datahdrlen;
 				//memset(temp->data, '\0', 1000 * sizeof(char));
-				fprintf(stderr,"SENDING EOF PACKET (LENGTH 12)\n");
+				fprintf(stderr,"SENDING EOF PACKET (LENGTH 16)\n");
 			}
 			else if (input == 0) {
 				break;
@@ -320,7 +322,7 @@ void
 rel_output (rel_t *r)
 {
 	while (r->receiverbuffer[0] != NULL) {
-		int pack_size = ntohs(r->receiverbuffer[0]->len) - 12;
+		int pack_size = ntohs(r->receiverbuffer[0]->len) - datahdrlen;
 		int avail_buf_space = conn_bufspace(r->c);
 		if (pack_size > avail_buf_space) {
 			return;
@@ -353,6 +355,7 @@ rel_timer ()
 				}
 			}
 		}
+		fprintf(stderr, "%d,%d,%d,%d\n", rel_list->receiverbuffer[0]==NULL, rel_list->send_sw->lar > rel_list->send_sw->lfs, eofrec, eofread);
 		if ( rel_list->receiverbuffer[0]==NULL && rel_list->send_sw->lar > rel_list->send_sw->lfs && eofrec && eofread){
 			rel_destroy(rel_list);
 		}
