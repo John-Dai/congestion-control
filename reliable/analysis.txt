@@ -1,2 +1,2 @@
 running on John's local VM:
-relayer's bandwith is 33.89.376000 kb/s
+relayer's bandwith is 3389.376000 kb/s

@@ -56,6 +56,10 @@ struct reliable_state {
 	int window_size;
 	int timeout_len;
 	long* times;
+	long bytesSent;
+	long timerTicks;
+	FILE* fp;
+	int mode;
 
 	/*bc rel_t gets passed btw all functions it should keep track of our sliding windows*/
 	struct send_slidingWindow * send_sw;
@@ -123,6 +127,11 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 
 	r->times = malloc(r->window_size * sizeof(long));
 	memset(r->times, 0, r->window_size * sizeof(long));
+
+	r->bytesSent=0;
+	r->timerTicks=0;
+	r->fp = fopen("senderstats.txt", "w+");
+	r->mode=c->sender_receiver;
 	fprintf(stderr, "rel created\n");
   return r;
 }
@@ -140,6 +149,7 @@ rel_destroy (rel_t *r)
 	free(r->senderbuffer);
 	free(r->receiverbuffer);
 	free(r->times);
+	fclose(r->fp);
 	free(r);
 	fprintf(stderr, "rel destroyed\n");
 }
@@ -178,6 +188,7 @@ long long current_timestamp() {
 void send_packet(packet_t* pkt, rel_t* s, int index, uint16_t len) {
 	fprintf(stderr, "send packet and update times");
 	s->times[index] = current_timestamp();
+	s->bytesSent+=len;
 	conn_sendpkt(s->c, pkt, len);
 }
 
@@ -343,6 +354,12 @@ void
 rel_timer ()
 {
   /* Retransmit any packets that need to be retransmitted */
+	rel_list->timerTicks+=1;
+	if (rel_list->timerTicks%100==0 && rel_list->mode==SENDER) {
+		fprintf(rel_list->fp,"bandwidth(bytes/s)=%li\n",rel_list->bytesSent);
+		fflush(rel_list->fp);
+		rel_list->bytesSent=0;
+	}
 	int i;
 		for (i = 0; i < rel_list->window_size; i++) {
 			if (rel_list->times[i] > 0) {
