@@ -23,6 +23,9 @@ static int eofseqno = 0;
 uint32_t ackSeqNo = 0;
 uint16_t datahdrlen = 16;
 uint16_t acklen = 12;
+float ALPHA = 0.125;
+float BETA = 0.25;
+float K = 4.0;
 
 struct packetnode {
 	int length;
@@ -61,7 +64,13 @@ struct reliable_state {
 	FILE* fp;
 	int mode;
 	int id;
-	int RTT;
+
+	long srtt;
+	long srtt_prev;
+	long rttvar;
+	long rttvar_prev;
+	long RTT;
+	int received_ackno;
 
 	/*bc rel_t gets passed btw all functions it should keep track of our sliding windows*/
 	struct send_slidingWindow * send_sw;
@@ -143,6 +152,12 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	}
 	r->mode=c->sender_receiver;
 	r->RTT=200;
+
+	r->srtt = 0; //.3 seconds in ns
+	r->srtt_prev = 0; //.3 seconds in ns
+	r->rttvar = 0;
+	r->rttvar_prev = 0;
+	r->received_ackno = 0;
 
 	fprintf(stderr, "rel created\n");
   return r;
@@ -239,6 +254,15 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 	//Handle Ack Packet
 	else if (ntohs(pkt->len) == acklen) {
 		fprintf(stderr,"ackkkkkkkkkkkkkk:%d, seqno=%d\n",ntohl(pkt->ackno), ntohl(pkt->seqno));
+
+		if (ntohl(pkt->ackno) > r->received_ackno) {
+			r->received_ackno = ntohl(pkt->ackno);
+			r->RTT = current_timestamp() - r->times[0];
+			if (ntohl(pkt->ackno) == 1) {
+				r->srtt_prev = r->RTT;
+				r->srtt = r->RTT;
+			}
+		}
 
 		if (ntohl(pkt->ackno) > r->send_sw->lar) {
 			r->send_sw->lar = ntohl(pkt->ackno);
@@ -367,6 +391,20 @@ rel_output (rel_t *r)
 	}
 }
 
+long calculate_RTO() {
+	long rttvar_temp = rel_list->rttvar;
+	rel_list->rttvar = ((1.0 - BETA) * rel_list->rttvar_prev)+(BETA * (abs(rel_list->RTT - rel_list->srtt_prev)));
+
+	long srtt_temp = rel_list->srtt;
+	rel_list->srtt = ((1.0 - ALPHA) * rel_list->srtt_prev)+(ALPHA * rel_list->RTT);
+
+	rel_list->srtt_prev = srtt_temp;
+	rel_list->rttvar_prev = rttvar_temp;
+
+	long RTO = rel_list->srtt + (K * rel_list->rttvar);
+	return RTO;
+}
+
 void
 rel_timer ()
 {
@@ -383,7 +421,8 @@ rel_timer ()
 				long currentTime = current_timestamp();
 				long elapsedTime = currentTime - rel_list->times[i];
 				fprintf(stderr, "pos:%d, time:%lu\n", i, rel_list->times[i]);
-				if (elapsedTime > 2*rel_list->RTT) {
+				long RTO = calculate_RTO();
+				if (elapsedTime > RTO) {
 					fprintf(stderr, "packet seqno %d TIMEOUT, retransmitting!\n",ntohl(rel_list->senderbuffer[i]->seqno));
 					send_packet(rel_list->senderbuffer[i], rel_list, i, ntohs(rel_list->senderbuffer[i]->len));
 				}
