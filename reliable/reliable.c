@@ -214,7 +214,7 @@ long long current_timestamp() {
 }
 
 void send_packet(packet_t* pkt, rel_t* s, int index, uint16_t len) {
-	fprintf(stderr, "send packet and update times");
+	fprintf(stderr, "send packet %d\n", ntohl(pkt->seqno));
 	s->times[index] = current_timestamp();
 	s->bytesSent+=len;
 	conn_sendpkt(s->c, pkt, len);
@@ -286,6 +286,18 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			r->senderbuffer[r->window_size - 1] = NULL;
 			r->times[r->window_size - 1] = 0;
 		}
+		int inBuffer=0;
+		int i;
+		for (i = 0; i < r->window_size - 1; i++) {
+			if (r->senderbuffer[i]!=NULL && ntohl(r->senderbuffer[i]->seqno)==r->send_sw->lfs+1) {
+				send_packet(r->senderbuffer[i], r, i, ntohs(r->senderbuffer[i]->len));
+				inBuffer=1;
+				break;
+			}
+		}
+		if (inBuffer==0) {
+			rel_read(r);
+		}
 	}
 	// Handle a data packet
 	else {
@@ -314,8 +326,6 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			rel_sendack(r);
 		}
 	}
-	rel_read(r);
-
 }
 
 
@@ -425,6 +435,10 @@ rel_timer ()
 				if (elapsedTime > RTO) {
 					fprintf(stderr, "packet seqno %d TIMEOUT, retransmitting!\n",ntohl(rel_list->senderbuffer[i]->seqno));
 					send_packet(rel_list->senderbuffer[i], rel_list, i, ntohs(rel_list->senderbuffer[i]->len));
+					rel_list->window_size=1;
+					rel_list->send_sw->sws=1;
+					rel_list->send_sw->lfs=ntohl(rel_list->senderbuffer[i]->seqno);
+					break;
 				}
 			}
 		}
