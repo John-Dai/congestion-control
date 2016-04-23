@@ -71,7 +71,6 @@ struct reliable_state {
 	long rttvar_prev;
 	long RTT;
 	int received_ackno;
-	int timesAckRepeated;
 
 	/*bc rel_t gets passed btw all functions it should keep track of our sliding windows*/
 	struct send_slidingWindow * send_sw;
@@ -159,7 +158,6 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	r->rttvar = 0;
 	r->rttvar_prev = 0;
 	r->received_ackno = 0;
-	r->timesAckRepeated = 0;
 
 	fprintf(stderr, "rel created\n");
   return r;
@@ -257,23 +255,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 	else if (ntohs(pkt->len) == acklen) {
 		fprintf(stderr,"ackkkkkkkkkkkkkk:%d, seqno=%d\n",ntohl(pkt->ackno), ntohl(pkt->seqno));
 
-		if (ntohl(pkt->ackno) == r->received_ackno) {
-			r->timesAckRepeated+=1;
-			if (r->timesAckRepeated==3) {
-				int i;
-				for (i = 0; i < r->window_size - 1; i++) {
-					//fprintf(r->fp,"buffer:%d, pkt=%d\n",ntohl(r->senderbuffer[i]->seqno), ntohl(pkt->ackno));
-					if (r->senderbuffer[i]!=NULL && ntohl(r->senderbuffer[i]->seqno)==ntohl(pkt->ackno)) {
-						send_packet(r->senderbuffer[i], r, i, ntohs(r->senderbuffer[i]->len));
-						break;
-					}
-				}
-				r->timesAckRepeated=0;
-			}
-			return;
-		}
-
-		else if (ntohl(pkt->ackno) > r->received_ackno) {
+		if (ntohl(pkt->ackno) > r->received_ackno) {
 			r->received_ackno = ntohl(pkt->ackno);
 			r->RTT = current_timestamp() - r->times[0];
 			if (ntohl(pkt->ackno) == 1) {
