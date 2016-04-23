@@ -365,7 +365,7 @@ rel_timer ()
   /* Retransmit any packets that need to be retransmitted */
 	rel_list->timerTicks+=1;
 	if (rel_list->timerTicks%20==0 && rel_list->mode==SENDER) {
-		fprintf(rel_list->fp,"%f\t%li\n",(float)(rel_list->timerTicks)/100, (rel_list->bytesSent)*5); //bandwidth in bypes/second
+		fprintf(rel_list->fp,"%lld\t%li\n",current_timestamp(), (rel_list->bytesSent)*5); //bandwidth in bypes/second
 		fflush(rel_list->fp);
 		rel_list->bytesSent=0;
 	}
