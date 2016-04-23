@@ -60,6 +60,7 @@ struct reliable_state {
 	long timerTicks;
 	FILE* fp;
 	int mode;
+	int id;
 
 	/*bc rel_t gets passed btw all functions it should keep track of our sliding windows*/
 	struct send_slidingWindow * send_sw;
@@ -130,8 +131,11 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 
 	r->bytesSent=0;
 	r->timerTicks=0;
-	r->fp = fopen("senderstats.txt", "w+");
+	r->fp = fopen("senderstats.txt", "a+");
 	r->mode=c->sender_receiver;
+	time_t t;
+	srand((unsigned) time(&t));
+	r->id= rand() % 10000;
 	fprintf(stderr, "rel created\n");
   return r;
 }
@@ -355,8 +359,8 @@ rel_timer ()
 {
   /* Retransmit any packets that need to be retransmitted */
 	rel_list->timerTicks+=1;
-	if (rel_list->timerTicks%100==0 && rel_list->mode==SENDER) {
-		fprintf(rel_list->fp,"bandwidth(bytes/s)=%li\n",rel_list->bytesSent);
+	if (rel_list->timerTicks%20==0 && rel_list->mode==SENDER) {
+		fprintf(rel_list->fp,"%d bandwidth(bytes/s)=%li\n",rel_list->id, (rel_list->bytesSent)*5);
 		fflush(rel_list->fp);
 		rel_list->bytesSent=0;
 	}
