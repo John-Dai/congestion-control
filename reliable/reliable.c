@@ -26,6 +26,9 @@ uint16_t acklen = 12;
 float ALPHA = 0.125;
 float BETA = 0.25;
 float K = 4.0;
+int SS = 1;
+int AIMD = 2;
+int SS_AIMD_TRANSITION = 3;
 
 struct packetnode {
 	int length;
@@ -66,6 +69,7 @@ struct reliable_state {
 	FILE* rfp;
 	int mode;
 	int id;
+	int tcpmode;
 
 	long srtt;
 	long srtt_prev;
@@ -73,6 +77,7 @@ struct reliable_state {
 	long rttvar_prev;
 	long RTT;
 	int received_ackno;
+	long lastRTOForAIMD;
 
 	/*bc rel_t gets passed btw all functions it should keep track of our sliding windows*/
 	struct send_slidingWindow * send_sw;
@@ -158,12 +163,14 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	}
 	r->mode=c->sender_receiver;
 	r->RTT=200;
+	r->tcpmode=SS;
 
 	r->srtt = 0; //.3 seconds in ns
 	r->srtt_prev = 0; //.3 seconds in ns
 	r->rttvar = 0;
 	r->rttvar_prev = 0;
 	r->received_ackno = 0;
+	r->lastRTOForAIMD = 0;
 
 	fprintf(stderr, "rel created\n");
   return r;
@@ -273,9 +280,9 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 
 		if (ntohl(pkt->ackno) > r->send_sw->lar) {
 			r->send_sw->lar = ntohl(pkt->ackno);
-			if (r->window_size < ntohs(pkt->rwnd)) {
-				//r->window_size+=1;
-				//r->send_sw->sws+=1;
+			if (r->window_size < ntohs(pkt->rwnd) && r->tcpmode==SS) {
+				r->window_size+=1;
+				r->send_sw->sws+=1;
 			}
 		}
 		if (ntohl(pkt->ackno) == eofseqno + 1) {
@@ -292,6 +299,15 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			}
 			r->senderbuffer[r->window_size - 1] = NULL;
 			r->times[r->window_size - 1] = 0;
+		}
+		if (r->senderbuffer[0]==NULL && r->tcpmode==SS_AIMD_TRANSITION) {
+			r->tcpmode=AIMD;
+			r->lastRTOForAIMD=current_timestamp();
+			r->window_size/=2;
+			r->send_sw->sws/=2;
+		}
+		if (r->tcpmode!=SS_AIMD_TRANSITION) {
+			rel_read(r);
 		}
 	}
 	// Handle a data packet
@@ -322,7 +338,6 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			rel_sendack(r);
 		}
 	}
-	rel_read(r);
 
 }
 
@@ -428,6 +443,14 @@ rel_timer ()
 		fflush(rel_list->rfp);
 		rel_list->bytesReceived=0;
 	}
+	if (rel_list->tcpmode==AIMD) {
+		if (current_timestamp()-rel_list->lastRTOForAIMD > calculate_RTO()) {
+			rel_list->window_size+=1;
+			rel_list->send_sw->sws+=1;
+			rel_list->lastRTOForAIMD=current_timestamp();
+			fprintf(stderr, "----------------------------AIMD window=%d\n", rel_list->send_sw->sws);
+		}
+	}
 	int i;
 		for (i = 0; i < rel_list->window_size; i++) {
 			if (rel_list->times[i] > 0) {
@@ -437,7 +460,11 @@ rel_timer ()
 				long RTO = calculate_RTO();
 				if (elapsedTime > RTO) {
 					fprintf(stderr, "packet seqno %d TIMEOUT, retransmitting!\n",ntohl(rel_list->senderbuffer[i]->seqno));
-					send_packet(rel_list->senderbuffer[i], rel_list, i, ntohs(rel_list->senderbuffer[i]->len));
+					//send_packet(rel_list->senderbuffer[i], rel_list, i, ntohs(rel_list->senderbuffer[i]->len));
+					rel_list->tcpmode=SS_AIMD_TRANSITION;
+					//rel_list->window_size/=2;
+					//rel_list->send_sw->sws/=2;
+					break;
 				}
 			}
 		}
