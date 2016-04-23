@@ -60,8 +60,10 @@ struct reliable_state {
 	int timeout_len;
 	long* times;
 	long bytesSent;
+	long bytesReceived;
 	long timerTicks;
 	FILE* fp;
+	FILE* rfp;
 	int mode;
 	int id;
 
@@ -141,6 +143,7 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	r->send_sw->lfs = 0; //no frames sent so far
 
 	r->bytesSent=0;
+	r->bytesReceived=0;
 	r->timerTicks=0;
 	time_t t;
 	srand((unsigned) time(&t));
@@ -149,6 +152,9 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	snprintf(filename, sizeof(filename), "%d.dat", r->id);
 	if (c->sender_receiver==SENDER) {
 		r->fp = fopen(filename, "w+");
+	}
+	else if (c->sender_receiver==RECEIVER) {
+		r->rfp = fopen("receiverstats.txt", "w+");
 	}
 	r->mode=c->sender_receiver;
 	r->RTT=200;
@@ -177,6 +183,7 @@ rel_destroy (rel_t *r)
 	free(r->receiverbuffer);
 	free(r->times);
 	fclose(r->fp);
+	fclose(r->rfp);
 	free(r);
 	fprintf(stderr, "rel destroyed\n");
 }
@@ -267,8 +274,8 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 		if (ntohl(pkt->ackno) > r->send_sw->lar) {
 			r->send_sw->lar = ntohl(pkt->ackno);
 			if (r->window_size < ntohs(pkt->rwnd)) {
-				r->window_size+=1;
-				r->send_sw->sws+=1;
+				//r->window_size+=1;
+				//r->send_sw->sws+=1;
 			}
 		}
 		if (ntohl(pkt->ackno) == eofseqno + 1) {
@@ -311,6 +318,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			memcpy(temppack, pkt, sizeof(packet_t));
 			r->receiverbuffer[in] = temppack;
 			rel_output(r);
+			r->bytesReceived+=ntohs(pkt->len);
 			rel_sendack(r);
 		}
 	}
@@ -415,6 +423,11 @@ rel_timer ()
 		fflush(rel_list->fp);
 		rel_list->bytesSent=0;
 	}
+	else if (rel_list->timerTicks%20==0 && rel_list->mode==RECEIVER) {
+		fprintf(rel_list->rfp, "%lld\t%li\n", current_timestamp(), (rel_list->bytesReceived)*5);
+		fflush(rel_list->rfp);
+		rel_list->bytesReceived=0;
+	}
 	int i;
 		for (i = 0; i < rel_list->window_size; i++) {
 			if (rel_list->times[i] > 0) {
@@ -428,7 +441,7 @@ rel_timer ()
 				}
 			}
 		}
-		fprintf(stderr, "%d,%d,%d,%d\n", rel_list->receiverbuffer[0]==NULL, rel_list->send_sw->lar > rel_list->send_sw->lfs, eofrec, eofread);
+		//fprintf(stderr, "%d,%d,%d,%d\n", rel_list->receiverbuffer[0]==NULL, rel_list->send_sw->lar > rel_list->send_sw->lfs, eofrec, eofread);
 		if ( rel_list->receiverbuffer[0]==NULL && rel_list->send_sw->lar > rel_list->send_sw->lfs && eofrec && eofread){
 			rel_destroy(rel_list);
 		}
