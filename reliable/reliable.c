@@ -131,11 +131,16 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 
 	r->bytesSent=0;
 	r->timerTicks=0;
-	r->fp = fopen("senderstats.txt", "a+");
-	r->mode=c->sender_receiver;
 	time_t t;
 	srand((unsigned) time(&t));
 	r->id= rand() % 10000;
+	char filename[0x100];
+	snprintf(filename, sizeof(filename), "%d.dat", r->id);
+	if (c->sender_receiver==SENDER) {
+		r->fp = fopen(filename, "w+");
+	}
+	r->mode=c->sender_receiver;
+
 	fprintf(stderr, "rel created\n");
   return r;
 }
@@ -360,7 +365,7 @@ rel_timer ()
   /* Retransmit any packets that need to be retransmitted */
 	rel_list->timerTicks+=1;
 	if (rel_list->timerTicks%20==0 && rel_list->mode==SENDER) {
-		fprintf(rel_list->fp,"%d bandwidth(bytes/s)=%li\n",rel_list->id, (rel_list->bytesSent)*5);
+		fprintf(rel_list->fp,"%f\t%li\n",(float)(rel_list->timerTicks)/100, (rel_list->bytesSent)*5); //bandwidth in bypes/second
 		fflush(rel_list->fp);
 		rel_list->bytesSent=0;
 	}
