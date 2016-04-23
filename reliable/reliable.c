@@ -61,6 +61,7 @@ struct reliable_state {
 	FILE* fp;
 	int mode;
 	int id;
+	int RTT;
 
 	/*bc rel_t gets passed btw all functions it should keep track of our sliding windows*/
 	struct send_slidingWindow * send_sw;
@@ -105,16 +106,20 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
   /* Do any other initialization you need here */
 
 	/*init our packet information*/
-	r->window_size= cc->window;
+	r->window_size= 200;
 	r->timeout_len = cc->timeout;
-
+	fprintf(stderr,"timeout:%d\n",cc->timeout);
 
 	r->senderbuffer = malloc(r->window_size * sizeof(packet_t));
 	r->receiverbuffer = malloc(r->window_size * sizeof(packet_t));
 	memset(r->senderbuffer, 0, r->window_size * sizeof(packet_t));
 	memset(r->receiverbuffer, 0, r->window_size * sizeof(packet_t));
 
+	r->times = malloc(r->window_size * sizeof(long));
+	memset(r->times, 0, r->window_size * sizeof(long));
+
 	/*init our sliding windows*/
+	r->window_size= cc->window;
 	r->rec_sw = xmalloc(sizeof(struct rec_slidingWindow));
 	r->send_sw = xmalloc(sizeof(struct send_slidingWindow));
 	r->rec_sw->rws = r->window_size;//cc->window; //window size
@@ -125,9 +130,6 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	r->send_sw->sws = r->window_size;//cc->window; //window size
 	r->send_sw->lar = 0; //no acks received
 	r->send_sw->lfs = 0; //no frames sent so far
-
-	r->times = malloc(r->window_size * sizeof(long));
-	memset(r->times, 0, r->window_size * sizeof(long));
 
 	r->bytesSent=0;
 	r->timerTicks=0;
@@ -140,6 +142,7 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 		r->fp = fopen(filename, "w+");
 	}
 	r->mode=c->sender_receiver;
+	r->RTT=200;
 
 	fprintf(stderr, "rel created\n");
   return r;
@@ -182,6 +185,7 @@ rel_sendack(rel_t *r) {
 	ackpack->ackno = htonl((r->rec_sw->lfr + 1));
 	//ackpack->seqno = htonl(ackSeqNo);
 	ackpack->len = htons(acklen); //not sure if this is correct
+	ackpack->rwnd = htons(200);
 	ackpack->cksum = cksum(ackpack, acklen);
 	conn_sendpkt(r->c, ackpack, acklen);
 	free(ackpack);
@@ -238,6 +242,10 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 
 		if (ntohl(pkt->ackno) > r->send_sw->lar) {
 			r->send_sw->lar = ntohl(pkt->ackno);
+			if (r->window_size < ntohs(pkt->rwnd)) {
+				r->window_size+=1;
+				r->send_sw->sws+=1;
+			}
 		}
 		if (ntohl(pkt->ackno) == eofseqno + 1) {
 			eofread = 1;
@@ -375,7 +383,7 @@ rel_timer ()
 				long currentTime = current_timestamp();
 				long elapsedTime = currentTime - rel_list->times[i];
 				fprintf(stderr, "pos:%d, time:%lu\n", i, rel_list->times[i]);
-				if (elapsedTime > rel_list->timeout_len) {
+				if (elapsedTime > 2*rel_list->RTT) {
 					fprintf(stderr, "packet seqno %d TIMEOUT, retransmitting!\n",ntohl(rel_list->senderbuffer[i]->seqno));
 					send_packet(rel_list->senderbuffer[i], rel_list, i, ntohs(rel_list->senderbuffer[i]->len));
 				}
