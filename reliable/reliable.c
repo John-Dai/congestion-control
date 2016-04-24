@@ -90,6 +90,12 @@ rel_t *rel_list;
 
 
 
+long long current_timestamp() {
+    struct timeval te;
+    gettimeofday(&te, NULL);
+    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
+    return milliseconds;
+}
 
 
 /* Creates a new reliable protocol session, returns NULL on failure.
@@ -157,12 +163,13 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	srand((unsigned) time(&t));
 	r->id= rand() % 10000;
 	char filename[0x100];
-	snprintf(filename, sizeof(filename), "%d.dat", r->id);
 	if (c->sender_receiver==SENDER) {
+		snprintf(filename, sizeof(filename), "%d.dat", r->id);
 		r->fp = fopen(filename, "w+");
 	}
 	else if (c->sender_receiver==RECEIVER) {
-		r->rfp = fopen("receiverstats.txt", "w+");
+		snprintf(filename, sizeof(filename), "r%lld.dat", current_timestamp());
+		r->rfp = fopen(filename, "w+");
 	}
 	r->mode=c->sender_receiver;
 	r->RTT=200;
@@ -226,15 +233,8 @@ rel_sendack(rel_t *r) {
 	free(ackpack);
 }
 
-long long current_timestamp() {
-    struct timeval te;
-    gettimeofday(&te, NULL);
-    long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000;
-    return milliseconds;
-}
-
 void send_packet(packet_t* pkt, rel_t* s, int index, uint16_t len) {
-	fprintf(stderr, "send packet %d and update times\n", ntohl(pkt->seqno));
+	fprintf(stderr, "send packet %d at %lli and update times\n", ntohl(pkt->seqno), current_timestamp());
 	s->times[index] = current_timestamp();
 	s->bytesSent+=len;
 	conn_sendpkt(s->c, pkt, len);
@@ -330,7 +330,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 	// Handle a data packet
 	else {
 		fprintf(stderr, "datapacket!!:%d\n",ntohl(pkt->seqno));
-		//fprintf(stderr, "%s", pkt->data);
+		fprintf(stderr, "%s", pkt->data);
 		//if (pkt->data==NULL) {
 		//	rel_sendack(r);
 		//}
@@ -341,8 +341,8 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			rel_sendack(r);
 			fprintf(stderr, "Already received");
 		}
-
 		else {
+			//fprintf(r->rfp,"packet%d at %lld\n", ntohl(pkt->seqno), current_timestamp());
 			if (ntohs(pkt->len) == datahdrlen) {
 				eofrec = 1;
 			}
@@ -351,6 +351,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			memcpy(temppack, pkt, sizeof(packet_t));
 			r->receiverbuffer[in] = temppack;
 			rel_output(r);
+			fprintf(stderr,"len=%d", ntohs(pkt->len));
 			r->bytesReceived+=ntohs(pkt->len);
 			rel_sendack(r);
 		}
@@ -406,7 +407,7 @@ rel_read (rel_t *s)
 
 			send_packet(temp, s, ind, inputLen);
 			s->send_sw->lfs += 1;
-			//usleep(rand()%100);
+			usleep(rand()%100);
 		}
   }
 }
@@ -420,7 +421,7 @@ rel_output (rel_t *r)
 		if (pack_size > avail_buf_space) {
 			return;
 		}
-		//conn_output(r->c, r->receiverbuffer[0]->data, pack_size);
+		conn_output(r->c, r->receiverbuffer[0]->data, pack_size);
 
 		r->rec_sw->lfr = ntohl(r->receiverbuffer[0]->seqno);
 		r->rec_sw->laf = r->rec_sw->lfr + r->window_size;
@@ -457,12 +458,12 @@ rel_timer ()
   /* Retransmit any packets that need to be retransmitted */
 	rel_list->timerTicks+=1;
 	if (rel_list->timerTicks%20==0 && rel_list->mode==SENDER) {
-		fprintf(rel_list->fp,"%lld\t%li\t%d\n",current_timestamp(), (rel_list->bytesSent)*5, rel_list->send_sw->sws); //bandwidth in bytes/second
+		fprintf(rel_list->fp,"%lld\t%li\t%d\n",current_timestamp(), (rel_list->bytesSent)*5*8, rel_list->send_sw->sws); //bandwidth in bytes/second
 		fflush(rel_list->fp);
 		rel_list->bytesSent=0;
 	}
-	else if (/**rel_list->timerTicks%20==0 &&**/ rel_list->mode==RECEIVER) {
-		fprintf(rel_list->rfp, "%lld\t%li\n", current_timestamp(), (rel_list->bytesReceived)*100);
+	else if (rel_list->timerTicks%20==0 && rel_list->mode==RECEIVER) {
+		fprintf(rel_list->rfp, "%lld\t%li\n", current_timestamp(), (rel_list->bytesReceived)*5*8);
 		fflush(rel_list->rfp);
 		rel_list->bytesReceived=0;
 	}
