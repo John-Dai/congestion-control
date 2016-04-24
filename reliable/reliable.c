@@ -275,7 +275,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 	else if (ntohs(pkt->len) == acklen) {
 		fprintf(stderr,"ackkkkkkkkkkkkkk:%d, seqno=%d received_ackno=%d\n",ntohl(pkt->ackno), ntohl(pkt->seqno), r->received_ackno);
 
-		if (ntohl(pkt->ackno) == r->received_ackno && r->fast_retransmit_time<(current_timestamp()-80)) {
+	/**	if (ntohl(pkt->ackno) == r->received_ackno && r->fast_retransmit_time<(current_timestamp()-80)) {
 			r->times_received_last_ack+=1;
 			if (r->times_received_last_ack>=3) {
 				fprintf(stderr,"+++++++++++++++++++++resend %d\n",ntohl(pkt->seqno));
@@ -284,8 +284,8 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 				r->times_received_last_ack=0;
 				r->droppedpacket=1;
 			}
-		}
-		else if (ntohl(pkt->ackno) > r->received_ackno) {
+		}**/
+		if (ntohl(pkt->ackno) > r->received_ackno) {
 			r->received_ackno = ntohl(pkt->ackno);
 			r->RTT = current_timestamp() - r->times[0];
 			if (ntohl(pkt->ackno) == 1) {
@@ -441,7 +441,11 @@ long calculate_RTO() {
 	rel_list->srtt_prev = srtt_temp;
 	rel_list->rttvar_prev = rttvar_temp;
 
-	long RTO = rel_list->srtt + (K * rel_list->rttvar);
+	long krttvar = K * rel_list->rttvar;
+	long RTO = rel_list->srtt + (krttvar);
+	if (RTO<80) {
+		RTO=80;
+	}
 	return RTO;
 }
 
@@ -468,13 +472,16 @@ rel_timer ()
 			fprintf(stderr, "----------------------------AIMD window=%d\n", rel_list->send_sw->sws);
 		}
 	}
+/**	if (rel_list->mode==SENDER) {
+		fprintf(rel_list->fp,"%li\n",calculate_RTO());
+	}**/
 	int i;
 		for (i = 0; i < rel_list->window_size; i++) {
 			if (rel_list->times[i] > 0) {
 				long currentTime = current_timestamp();
 				long elapsedTime = currentTime - rel_list->times[i];
-				fprintf(stderr, "pos:%d, time:%lu\n", i, rel_list->times[i]);
-				long RTO = 80;//calculate_RTO();
+				//fprintf(stderr, "pos:%d, time:%lu\n", i, rel_list->times[i]);
+				long RTO = calculate_RTO();
 				if (elapsedTime > RTO && rel_list->droppedpacket==0) {
 					fprintf(stderr, "packet seqno %d TIMEOUT, RTO=%li, retransmitting!\n",ntohl(rel_list->senderbuffer[i]->seqno), RTO);
 					send_packet(rel_list->senderbuffer[i], rel_list, i, ntohs(rel_list->senderbuffer[i]->len));
