@@ -1,2 +1,13 @@
 running on John's local VM:
 relayer's bandwith is 3389.376000 kb/s
+
+our protocols:
+slow start in the beginning (increase window by 1 per ACK received)
+use RTO equation to calculate timeout length
+if any packet in sender buffer times out-->resend that packet and go into transition state
+in transition state, dont real any more input, just wait for sender buffer to empty (resend until they are all acked)
+once complete go into AIMD (halve window, increase window by 1 per RTT)
+continue to check for timeout and go into transition state as needed
+
+obserations: we get an average throughput of 5mb/s
+window size peaks at a bit over 100 in slow start, and in aimd oscillates from about 15 to 40
