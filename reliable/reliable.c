@@ -406,6 +406,7 @@ rel_read (rel_t *s)
 
 			send_packet(temp, s, ind, inputLen);
 			s->send_sw->lfs += 1;
+			//usleep(rand()%100);
 		}
   }
 }
@@ -452,6 +453,7 @@ long calculate_RTO() {
 void
 rel_timer ()
 {
+	fprintf(stderr,"----------10ms----------------------------------------\n");
   /* Retransmit any packets that need to be retransmitted */
 	rel_list->timerTicks+=1;
 	if (rel_list->timerTicks%20==0 && rel_list->mode==SENDER) {
