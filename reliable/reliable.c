@@ -77,7 +77,10 @@ struct reliable_state {
 	long rttvar_prev;
 	long RTT;
 	int received_ackno;
+	int times_received_last_ack;
+	long fast_retransmit_time;
 	long lastRTOForAIMD;
+	int droppedpacket;
 
 	/*bc rel_t gets passed btw all functions it should keep track of our sliding windows*/
 	struct send_slidingWindow * send_sw;
@@ -170,7 +173,10 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	r->rttvar = 0;
 	r->rttvar_prev = 0;
 	r->received_ackno = 0;
+	r->times_received_last_ack = 0;
+	r->fast_retransmit_time = 0;
 	r->lastRTOForAIMD = 0;
+	r->droppedpacket = 0;
 
 	fprintf(stderr, "rel created\n");
   return r;
@@ -228,7 +234,7 @@ long long current_timestamp() {
 }
 
 void send_packet(packet_t* pkt, rel_t* s, int index, uint16_t len) {
-	fprintf(stderr, "send packet and update times");
+	fprintf(stderr, "send packet %d and update times\n", ntohl(pkt->seqno));
 	s->times[index] = current_timestamp();
 	s->bytesSent+=len;
 	conn_sendpkt(s->c, pkt, len);
@@ -267,15 +273,26 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 	}
 	//Handle Ack Packet
 	else if (ntohs(pkt->len) == acklen) {
-		fprintf(stderr,"ackkkkkkkkkkkkkk:%d, seqno=%d\n",ntohl(pkt->ackno), ntohl(pkt->seqno));
+		fprintf(stderr,"ackkkkkkkkkkkkkk:%d, seqno=%d received_ackno=%d\n",ntohl(pkt->ackno), ntohl(pkt->seqno), r->received_ackno);
 
-		if (ntohl(pkt->ackno) > r->received_ackno) {
+		if (ntohl(pkt->ackno) == r->received_ackno && r->fast_retransmit_time<(current_timestamp()-80)) {
+			r->times_received_last_ack+=1;
+			if (r->times_received_last_ack>=3) {
+				fprintf(stderr,"+++++++++++++++++++++resend %d\n",ntohl(pkt->seqno));
+				send_packet(r->senderbuffer[0], r, 0, ntohs(r->senderbuffer[0]->len));
+				r->fast_retransmit_time=current_timestamp();
+				r->times_received_last_ack=0;
+				r->droppedpacket=1;
+			}
+		}
+		else if (ntohl(pkt->ackno) > r->received_ackno) {
 			r->received_ackno = ntohl(pkt->ackno);
 			r->RTT = current_timestamp() - r->times[0];
 			if (ntohl(pkt->ackno) == 1) {
 				r->srtt_prev = r->RTT;
 				r->srtt = r->RTT;
 			}
+			r->droppedpacket=0;
 		}
 
 		if (ntohl(pkt->ackno) > r->send_sw->lar) {
@@ -313,7 +330,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 	// Handle a data packet
 	else {
 		fprintf(stderr, "datapacket!!:%d\n",ntohl(pkt->seqno));
-		fprintf(stderr, "%s", pkt->data);
+		//fprintf(stderr, "%s", pkt->data);
 		//if (pkt->data==NULL) {
 		//	rel_sendack(r);
 		//}
@@ -402,7 +419,7 @@ rel_output (rel_t *r)
 		if (pack_size > avail_buf_space) {
 			return;
 		}
-		conn_output(r->c, r->receiverbuffer[0]->data, pack_size);
+		//conn_output(r->c, r->receiverbuffer[0]->data, pack_size);
 
 		r->rec_sw->lfr = ntohl(r->receiverbuffer[0]->seqno);
 		r->rec_sw->laf = r->rec_sw->lfr + r->window_size;
@@ -457,14 +474,14 @@ rel_timer ()
 				long currentTime = current_timestamp();
 				long elapsedTime = currentTime - rel_list->times[i];
 				fprintf(stderr, "pos:%d, time:%lu\n", i, rel_list->times[i]);
-				long RTO = calculate_RTO();
-				if (elapsedTime > RTO) {
-					fprintf(stderr, "packet seqno %d TIMEOUT, retransmitting!\n",ntohl(rel_list->senderbuffer[i]->seqno));
-					//send_packet(rel_list->senderbuffer[i], rel_list, i, ntohs(rel_list->senderbuffer[i]->len));
+				long RTO = 80;//calculate_RTO();
+				if (elapsedTime > RTO && rel_list->droppedpacket==0) {
+					fprintf(stderr, "packet seqno %d TIMEOUT, RTO=%li, retransmitting!\n",ntohl(rel_list->senderbuffer[i]->seqno), RTO);
+					send_packet(rel_list->senderbuffer[i], rel_list, i, ntohs(rel_list->senderbuffer[i]->len));
 					rel_list->tcpmode=SS_AIMD_TRANSITION;
 					//rel_list->window_size/=2;
 					//rel_list->send_sw->sws/=2;
-					break;
+					//break;
 				}
 			}
 		}
