@@ -457,12 +457,12 @@ rel_timer ()
   /* Retransmit any packets that need to be retransmitted */
 	rel_list->timerTicks+=1;
 	if (rel_list->timerTicks%20==0 && rel_list->mode==SENDER) {
-		fprintf(rel_list->fp,"%lld\t%li\t%d\n",current_timestamp(), (rel_list->bytesSent)*5, rel_list->send_sw->sws); //bandwidth in bypes/second
+		fprintf(rel_list->fp,"%lld\t%li\t%d\n",current_timestamp(), (rel_list->bytesSent)*5, rel_list->send_sw->sws); //bandwidth in bytes/second
 		fflush(rel_list->fp);
 		rel_list->bytesSent=0;
 	}
-	else if (rel_list->timerTicks%20==0 && rel_list->mode==RECEIVER) {
-		fprintf(rel_list->rfp, "%lld\t%li\n", current_timestamp(), (rel_list->bytesReceived)*5);
+	else if (/**rel_list->timerTicks%20==0 &&**/ rel_list->mode==RECEIVER) {
+		fprintf(rel_list->rfp, "%lld\t%li\n", current_timestamp(), (rel_list->bytesReceived)*100);
 		fflush(rel_list->rfp);
 		rel_list->bytesReceived=0;
 	}
