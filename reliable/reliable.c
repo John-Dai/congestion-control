@@ -187,6 +187,9 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	r->droppedpacket = 0;
 
 	fprintf(stderr, "rel created\n");
+	if (r->mode==RECEIVER) {
+		rel_read(r);
+	}
   return r;
 }
 
@@ -203,8 +206,12 @@ rel_destroy (rel_t *r)
 	free(r->senderbuffer);
 	free(r->receiverbuffer);
 	free(r->times);
-	fclose(r->fp);
-	fclose(r->rfp);
+	if (r->mode==SENDER) {
+		fclose(r->fp);
+	}
+	else if (r->mode==RECEIVER) {
+		fclose(r->rfp);
+	}
 	free(r);
 	fprintf(stderr, "rel destroyed\n");
 }
@@ -370,10 +377,37 @@ rel_read (rel_t *s)
 {
   if(s->c->sender_receiver == RECEIVER)
   {
+	  fprintf(stderr,"READingggggg eof--------------\n");
     //if already sent EOF to the sender
     //  return;
+	  if (eofseqno != 0) {
+		  return;
+	  }
     //else
-    //  send EOF to the sender
+	//  send EOF to the sender
+	  else {
+		  eofseqno = s->send_sw->lfs + 1;
+		  uint16_t inputLen = 0 + datahdrlen;
+		  inputLen = datahdrlen;
+		  //memset(temp->data, '\0', 1000 * sizeof(char));
+		  fprintf(stderr,"SENDING EOF PACKET (LENGTH 16)\n");
+		  packet_t *temp = malloc(sizeof(packet_t));
+		  int ind = 0;
+		  while (s->senderbuffer[ind] != NULL) {
+			  ind ++;
+		  }
+		  s->senderbuffer[ind] = temp;
+
+
+		  temp->cksum = 0;
+		  temp->len = htons(inputLen);
+		  temp->seqno = htonl(s->send_sw->lfs + 1);
+		  temp->ackno = htonl(s->send_sw->lar);
+		  temp->cksum = cksum(temp, inputLen);
+
+		  send_packet(temp, s, ind, inputLen);
+		  s->send_sw->lfs += 1;
+	  }
   }
   else //run in the sender mode
   {
@@ -500,8 +534,9 @@ rel_timer ()
 				}
 			}
 		}
-		//fprintf(stderr, "%d,%d,%d,%d\n", rel_list->receiverbuffer[0]==NULL, rel_list->send_sw->lar > rel_list->send_sw->lfs, eofrec, eofread);
+		fprintf(stderr, "%d,%d,%d,%d\n", rel_list->receiverbuffer[0]==NULL, rel_list->send_sw->lar > rel_list->send_sw->lfs, eofrec, eofread);
 		if ( rel_list->receiverbuffer[0]==NULL && rel_list->send_sw->lar > rel_list->send_sw->lfs && eofrec && eofread){
+			fprintf(stderr,"destroy\n");
 			rel_destroy(rel_list);
 		}
 }
