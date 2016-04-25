@@ -21,23 +21,23 @@
 <pairs>
   <pair>
    <sender>
-     <src>linux21:10000</src>
-     <dst>linux25:50001</dst>
+     <src>linux21:10400</src>
+     <dst>linux25:50401</dst>
    </sender>
    <receiver>
-     <src>linux22:20000</src>
-     <dst>linux25:50002</dst>
+     <src>linux22:20400</src>
+     <dst>linux25:50402</dst>
    </receiver>
   </pair>
 
   <pair>
    <sender>
-     <src>linux23:30000</src>
-     <dst>linux25:50003</dst>
+     <src>linux23:30400</src>
+     <dst>linux25:50403</dst>
    </sender>
    <receiver>
-     <src>linux24:40000</src>
-     <dst>linux25:50004</dst>
+     <src>linux24:40400</src>
+     <dst>linux25:50404</dst>
    </receiver>
   </pair>
 

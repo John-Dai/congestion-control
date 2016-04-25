@@ -32,7 +32,7 @@ using namespace std;
 #define PKT_SIZE 1016
 /*****************************************/
 //this is the receiver's listening port, you may need to change it before running
-unsigned short int udpport = 20000;
+unsigned short int udpport = 20400;
 /*****************************************/
 
 int udpsock;

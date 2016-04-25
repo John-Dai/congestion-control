@@ -1,0 +1,58 @@
+<config>
+
+<!-- CPU frequency (MHz) on which this relayer is running, can get by "cat /proc/cpuinfo" -->
+<CPU_frequency>2526.793</CPU_frequency>
+
+<!-- 1: enable relayer log, 0: disable relayer log. log is time consuming, it may interrupt pkt transmit -->
+<enable_log>0</enable_log>
+
+<number_of_pairs>2</number_of_pairs>
+
+<!-- propagation delay in ms, this delay should be larger than 1 -->
+<propagation_delay>20</propagation_delay>
+
+
+<!-- bandwidth in kb/s, should be smaller than 50000 due to system limitations -->
+<bandwidth>10000</bandwidth>
+
+<!-- buffer size in number of packets, delay bandwidth product is recommended, RTT * bandwidth -->
+<buffer_size>25</buffer_size>
+
+<pairs>
+  <pair>
+   <sender>
+     <src>linux25:10400</src>
+     <dst>linux25:50401</dst>
+   </sender>
+   <receiver>
+     <src>linux25:20400</src>
+     <dst>linux25:50402</dst>
+   </receiver>
+  </pair>
+
+  <pair>
+   <sender>
+     <src>linux25:30400</src>
+     <dst>linux25:50403</dst>
+   </sender>
+   <receiver>
+     <src>linux25:40400</src>
+     <dst>linux25:50404</dst>
+   </receiver>
+  </pair>
+
+<!--
+  <pair>
+   <sender>
+     <src>linux26:60000</src>
+     <dst>linux25:50006</dst>
+   </sender>
+   <receiver>
+     <src>linux27:70000</src>
+     <dst>linux25:50007</dst>
+   </receiver>
+  </pair>
+-->
+</pairs>
+
+</config>
