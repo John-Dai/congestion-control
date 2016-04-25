@@ -26,6 +26,7 @@ uint16_t acklen = 12;
 float ALPHA = 0.125;
 float BETA = 0.25;
 float K = 4.0;
+int GIVENRTT = 80;
 int SS = 1;
 int AIMD = 2;
 int SS_AIMD_TRANSITION = 3;
@@ -120,7 +121,7 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
   }
 
   r->c = c;
-	r->next = rel_list; //TODO: these 5 lines needed? was in lab1 original but not in lab4 original.
+	r->next = rel_list;
 	r->prev = &rel_list;
 	if (rel_list){
 		rel_list->prev = &r->next;
@@ -175,8 +176,8 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	r->RTT=200;
 	r->tcpmode=SS;
 
-	r->srtt = 0; //.3 seconds in ns
-	r->srtt_prev = 0; //.3 seconds in ns
+	r->srtt = 0;
+	r->srtt_prev = 0;
 	r->rttvar = 0;
 	r->rttvar_prev = 0;
 	r->received_ackno = 0;
@@ -196,7 +197,7 @@ rel_destroy (rel_t *r)
 		r->next->prev = r->prev;
 	}
 	*r->prev = r->next;
-  conn_destroy (r->c);//TODO: same here as rel_create?
+  conn_destroy (r->c);
 
   /* Free any other allocated memory here */
 	free(r->senderbuffer);
@@ -275,7 +276,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 	else if (ntohs(pkt->len) == acklen) {
 		fprintf(stderr,"ackkkkkkkkkkkkkk:%d, seqno=%d received_ackno=%d\n",ntohl(pkt->ackno), ntohl(pkt->seqno), r->received_ackno);
 
-	/**	if (ntohl(pkt->ackno) == r->received_ackno && r->fast_retransmit_time<(current_timestamp()-80)) {
+	/**	if (ntohl(pkt->ackno) == r->received_ackno && r->fast_retransmit_time<(current_timestamp()-GIVENRTT)) {
 			r->times_received_last_ack+=1;
 			if (r->times_received_last_ack>=3) {
 				fprintf(stderr,"+++++++++++++++++++++resend %d\n",ntohl(pkt->seqno));
@@ -291,6 +292,8 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			if (ntohl(pkt->ackno) == 1) {
 				r->srtt_prev = r->RTT;
 				r->srtt = r->RTT;
+				r->rttvar = r->RTT/2;
+				r->rttvar_prev = r->RTT/2;
 			}
 			r->droppedpacket=0;
 		}
@@ -435,22 +438,22 @@ rel_output (rel_t *r)
 	}
 }
 
-long calculate_RTO() {
+long calculate_rto() {
 	long rttvar_temp = rel_list->rttvar;
-	rel_list->rttvar = ((1.0 - BETA) * rel_list->rttvar_prev)+(BETA * (abs(rel_list->RTT - rel_list->srtt_prev)));
+	rel_list->rttvar = ((1.0 - BETA)*rel_list->rttvar_prev)+(BETA*(abs(rel_list->srtt_prev-rel_list->RTT)));
 
 	long srtt_temp = rel_list->srtt;
-	rel_list->srtt = ((1.0 - ALPHA) * rel_list->srtt_prev)+(ALPHA * rel_list->RTT);
+	rel_list->srtt = ((1.0-ALPHA)*rel_list->srtt_prev)+(ALPHA*rel_list->RTT);
 
 	rel_list->srtt_prev = srtt_temp;
 	rel_list->rttvar_prev = rttvar_temp;
 
-	long krttvar = K * rel_list->rttvar;
-	long RTO = rel_list->srtt + (krttvar);
-	if (RTO<80) {
-		RTO=80;
+	long krttvar = K*rel_list->rttvar;
+	long rto = rel_list->srtt+(krttvar);
+	if (rto<GIVENRTT) {
+		rto=GIVENRTT;
 	}
-	return RTO;
+	return rto;
 }
 
 void
@@ -470,7 +473,7 @@ rel_timer ()
 		rel_list->bytesReceived=0;
 	}
 	if (rel_list->tcpmode==AIMD) {
-		if (current_timestamp()-rel_list->lastRTOForAIMD > calculate_RTO()) {
+		if (current_timestamp()-rel_list->lastRTOForAIMD > calculate_rto()) {
 			rel_list->window_size+=1;
 			rel_list->send_sw->sws+=1;
 			rel_list->lastRTOForAIMD=current_timestamp();
@@ -486,9 +489,9 @@ rel_timer ()
 				long currentTime = current_timestamp();
 				long elapsedTime = currentTime - rel_list->times[i];
 				//fprintf(stderr, "pos:%d, time:%lu\n", i, rel_list->times[i]);
-				long RTO = calculate_RTO();
-				if (elapsedTime > RTO && rel_list->droppedpacket==0) {
-					fprintf(stderr, "packet seqno %d TIMEOUT, RTO=%li, retransmitting!\n",ntohl(rel_list->senderbuffer[i]->seqno), RTO);
+				long rto = calculate_rto();
+				if (elapsedTime>rto && rel_list->droppedpacket==0) {
+					fprintf(stderr, "packet seqno %d TIMEOUT, rto=%li, retransmitting!\n",ntohl(rel_list->senderbuffer[i]->seqno), rto);
 					send_packet(rel_list->senderbuffer[i], rel_list, i, ntohs(rel_list->senderbuffer[i]->len));
 					rel_list->tcpmode=SS_AIMD_TRANSITION;
 					//rel_list->window_size/=2;
