@@ -330,7 +330,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 	// Handle a data packet
 	else {
 		fprintf(stderr, "datapacket!!:%d\n",ntohl(pkt->seqno));
-		fprintf(stderr, "%s", pkt->data);
+		//fprintf(stderr, "%s", pkt->data);
 		//if (pkt->data==NULL) {
 		//	rel_sendack(r);
 		//}
@@ -349,10 +349,12 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			int in = (ntohl(pkt->seqno) - (r->rec_sw->lfr + 1)) % (r->window_size);
 			packet_t* temppack = malloc(sizeof(packet_t));
 			memcpy(temppack, pkt, sizeof(packet_t));
-			r->receiverbuffer[in] = temppack;
+			if (r->receiverbuffer[in]==NULL) {
+				r->receiverbuffer[in] = temppack;
+				r->bytesReceived+=ntohs(pkt->len);
+			}
 			rel_output(r);
 			fprintf(stderr,"len=%d", ntohs(pkt->len));
-			r->bytesReceived+=ntohs(pkt->len);
 			rel_sendack(r);
 		}
 	}
