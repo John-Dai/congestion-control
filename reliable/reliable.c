@@ -82,6 +82,7 @@ struct reliable_state {
 	long fast_retransmit_time;
 	long lastRTOForAIMD;
 	int droppedpacket;
+	long long sendStartTime;
 
 	/*bc rel_t gets passed btw all functions it should keep track of our sliding windows*/
 	struct send_slidingWindow * send_sw;
@@ -89,7 +90,12 @@ struct reliable_state {
 };
 rel_t *rel_list;
 
-
+long long current_timestamp_micro() {
+    struct timeval te;
+    gettimeofday(&te, NULL);
+    long long microseconds = te.tv_sec*1000000LL + te.tv_usec;
+    return microseconds;
+}
 
 long long current_timestamp() {
     struct timeval te;
@@ -185,6 +191,7 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	r->fast_retransmit_time = 0;
 	r->lastRTOForAIMD = 0;
 	r->droppedpacket = 0;
+	r->sendStartTime = 0;
 
 	fprintf(stderr, "rel created\n");
 	if (r->mode==RECEIVER) {
@@ -227,7 +234,7 @@ rel_demux (const struct config_common *cc,
 
 void
 rel_sendack(rel_t *r) {
-	fprintf(stderr,"sendack");
+	//fprintf(stderr,"sendack");
 	packet_t *ackpack = malloc(sizeof(*ackpack));
 	memset(ackpack, 0, sizeof(*ackpack));
 	ackpack->cksum = 0;
@@ -314,6 +321,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 		}
 		if (ntohl(pkt->ackno) == eofseqno + 1) {
 			eofread = 1;
+			fprintf(stderr,"Transit time (sec)=%f\n", (float)((current_timestamp_micro()-r->sendStartTime))/1000000.0);
 		}
 		while (r->senderbuffer[0] != NULL) {
 			int i;
@@ -327,6 +335,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 			r->senderbuffer[r->window_size - 1] = NULL;
 			r->times[r->window_size - 1] = 0;
 		}
+		if (r->mode==SENDER) {
 		if (r->senderbuffer[0]==NULL && r->tcpmode==SS_AIMD_TRANSITION) {
 			r->tcpmode=AIMD;
 			r->lastRTOForAIMD=current_timestamp();
@@ -336,11 +345,13 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 		if (r->tcpmode!=SS_AIMD_TRANSITION) {
 			rel_read(r);
 		}
+		}
 	}
 	// Handle a data packet
 	else {
 		fprintf(stderr, "datapacket!!:%d\n",ntohl(pkt->seqno));
 		//fprintf(stderr, "%s", pkt->data);
+
 		//if (pkt->data==NULL) {
 		//	rel_sendack(r);
 		//}
@@ -404,7 +415,9 @@ rel_read (rel_t *s)
 		  temp->seqno = htonl(s->send_sw->lfs + 1);
 		  temp->ackno = htonl(s->send_sw->lar);
 		  temp->cksum = cksum(temp, inputLen);
-
+		  if (s->send_sw->lfs==0) {
+			  s->sendStartTime=current_timestamp_micro();
+		  }
 		  send_packet(temp, s, ind, inputLen);
 		  s->send_sw->lfs += 1;
 	  }
@@ -443,7 +456,9 @@ rel_read (rel_t *s)
 			temp->seqno = htonl(s->send_sw->lfs + 1);
 			temp->ackno = htonl(s->send_sw->lar);
 			temp->cksum = cksum(temp, inputLen);
-
+			  if (s->send_sw->lfs==0) {
+				  s->sendStartTime=current_timestamp_micro();
+			  }
 			send_packet(temp, s, ind, inputLen);
 			s->send_sw->lfs += 1;
 			usleep(rand()%100);
