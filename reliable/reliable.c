@@ -30,6 +30,7 @@ int GIVENRTT = 80;
 int SS = 1;
 int AIMD = 2;
 int SS_AIMD_TRANSITION = 3;
+int PREALLOCATE_WINDOW_SIZE = 200;
 
 struct packetnode {
 	int length;
@@ -138,7 +139,7 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
   /* Do any other initialization you need here */
 
 	/*init our packet information*/
-	r->window_size= 200;
+	r->window_size= PREALLOCATE_WINDOW_SIZE;
 	r->timeout_len = cc->timeout;
 	//fprintf(stderr,"timeout:%d\n",cc->timeout);
 
@@ -179,7 +180,7 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 		r->rfp = fopen(filename, "w+");
 	}
 	r->mode=c->sender_receiver;
-	r->RTT=200;
+	r->RTT=GIVENRTT;
 	r->tcpmode=SS;
 
 	r->srtt = 0;
@@ -242,7 +243,7 @@ rel_sendack(rel_t *r) {
 	ackpack->ackno = htonl((r->rec_sw->lfr + 1));
 	//ackpack->seqno = htonl(ackSeqNo);
 	ackpack->len = htons(acklen); //not sure if this is correct
-	ackpack->rwnd = htons(200);
+	ackpack->rwnd = htons(r->rec_sw->rws);
 	ackpack->cksum = cksum(ackpack, acklen);
 	conn_sendpkt(r->c, ackpack, acklen);
 	free(ackpack);
