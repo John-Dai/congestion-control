@@ -140,7 +140,7 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 	/*init our packet information*/
 	r->window_size= 200;
 	r->timeout_len = cc->timeout;
-	fprintf(stderr,"timeout:%d\n",cc->timeout);
+	//fprintf(stderr,"timeout:%d\n",cc->timeout);
 
 	r->senderbuffer = malloc(r->window_size * sizeof(packet_t));
 	r->receiverbuffer = malloc(r->window_size * sizeof(packet_t));
@@ -249,7 +249,7 @@ rel_sendack(rel_t *r) {
 }
 
 void send_packet(packet_t* pkt, rel_t* s, int index, uint16_t len) {
-	fprintf(stderr, "send packet %d at %lli and update times\n", ntohl(pkt->seqno), current_timestamp());
+	//fprintf(stderr, "send packet %d at %lli and update times\n", ntohl(pkt->seqno), current_timestamp());
 	s->times[index] = current_timestamp();
 	s->bytesSent+=len;
 	conn_sendpkt(s->c, pkt, len);
@@ -258,8 +258,8 @@ void send_packet(packet_t* pkt, rel_t* s, int index, uint16_t len) {
 void
 rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 {
-	fprintf(stderr, "\nrecvpkt len: %d\n", ntohs(pkt->len));
-	fprintf(stderr, "my window size is %d", r->rec_sw->rws);
+	//fprintf(stderr, "\nrecvpkt len: %d\n", ntohs(pkt->len));
+	//fprintf(stderr, "my window size is %d", r->rec_sw->rws);
 
 	int ackSize = acklen;
 	int dataPackSize = sizeof(pkt->data) + datahdrlen;
@@ -288,7 +288,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 	}
 	//Handle Ack Packet
 	else if (ntohs(pkt->len) == acklen) {
-		fprintf(stderr,"ackkkkkkkkkkkkkk:%d, seqno=%d received_ackno=%d\n",ntohl(pkt->ackno), ntohl(pkt->seqno), r->received_ackno);
+		//fprintf(stderr,"ackkkkkkkkkkkkkk:%d, seqno=%d received_ackno=%d\n",ntohl(pkt->ackno), ntohl(pkt->seqno), r->received_ackno);
 
 	/**	if (ntohl(pkt->ackno) == r->received_ackno && r->fast_retransmit_time<(current_timestamp()-GIVENRTT)) {
 			r->times_received_last_ack+=1;
@@ -349,7 +349,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 	}
 	// Handle a data packet
 	else {
-		fprintf(stderr, "datapacket!!:%d\n",ntohl(pkt->seqno));
+		//fprintf(stderr, "datapacket!!:%d\n",ntohl(pkt->seqno));
 		//fprintf(stderr, "%s", pkt->data);
 
 		//if (pkt->data==NULL) {
@@ -360,7 +360,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 		}
 		else if (ntohl(pkt->seqno) <= r->rec_sw->lfr) {
 			rel_sendack(r);
-			fprintf(stderr, "Already received");
+			//fprintf(stderr, "Already received");
 		}
 		else {
 			//fprintf(r->rfp,"packet%d at %lld\n", ntohl(pkt->seqno), current_timestamp());
@@ -375,7 +375,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 				r->bytesReceived+=ntohs(pkt->len);
 			}
 			rel_output(r);
-			fprintf(stderr,"len=%d", ntohs(pkt->len));
+			//fprintf(stderr,"len=%d", ntohs(pkt->len));
 			rel_sendack(r);
 		}
 	}
@@ -388,7 +388,7 @@ rel_read (rel_t *s)
 {
   if(s->c->sender_receiver == RECEIVER)
   {
-	  fprintf(stderr,"READingggggg eof--------------\n");
+	  //fprintf(stderr,"READingggggg eof--------------\n");
     //if already sent EOF to the sender
     //  return;
 	  if (eofseqno != 0) {
@@ -401,7 +401,7 @@ rel_read (rel_t *s)
 		  uint16_t inputLen = 0 + datahdrlen;
 		  inputLen = datahdrlen;
 		  //memset(temp->data, '\0', 1000 * sizeof(char));
-		  fprintf(stderr,"SENDING EOF PACKET (LENGTH 16)\n");
+		  //fprintf(stderr,"SENDING EOF PACKET (LENGTH 16)\n");
 		  packet_t *temp = malloc(sizeof(packet_t));
 		  int ind = 0;
 		  while (s->senderbuffer[ind] != NULL) {
@@ -437,7 +437,7 @@ rel_read (rel_t *s)
 				eofseqno = s->send_sw->lfs + 1;
 				inputLen = datahdrlen;
 				//memset(temp->data, '\0', 1000 * sizeof(char));
-				fprintf(stderr,"SENDING EOF PACKET (LENGTH 16)\n");
+				//fprintf(stderr,"SENDING EOF PACKET (LENGTH 16)\n");
 			}
 			else if (input == 0) {
 				break;
@@ -508,7 +508,7 @@ long calculate_rto() {
 void
 rel_timer ()
 {
-	fprintf(stderr,"----------10ms----------------------------------------\n");
+	//fprintf(stderr,"----------10ms----------------------------------------\n");
   /* Retransmit any packets that need to be retransmitted */
 	rel_list->timerTicks+=1;
 	if (rel_list->timerTicks%20==0 && rel_list->mode==SENDER) {
@@ -526,7 +526,7 @@ rel_timer ()
 			rel_list->window_size+=1;
 			rel_list->send_sw->sws+=1;
 			rel_list->lastRTOForAIMD=current_timestamp();
-			fprintf(stderr, "----------------------------AIMD window=%d\n", rel_list->send_sw->sws);
+			//fprintf(stderr, "----------------------------AIMD window=%d\n", rel_list->send_sw->sws);
 		}
 	}
 /**	if (rel_list->mode==SENDER) {
@@ -540,7 +540,7 @@ rel_timer ()
 				//fprintf(stderr, "pos:%d, time:%lu\n", i, rel_list->times[i]);
 				long rto = calculate_rto();
 				if (elapsedTime>rto && rel_list->droppedpacket==0) {
-					fprintf(stderr, "packet seqno %d TIMEOUT, rto=%li, retransmitting!\n",ntohl(rel_list->senderbuffer[i]->seqno), rto);
+					//fprintf(stderr, "packet seqno %d TIMEOUT, rto=%li, retransmitting!\n",ntohl(rel_list->senderbuffer[i]->seqno), rto);
 					send_packet(rel_list->senderbuffer[i], rel_list, i, ntohs(rel_list->senderbuffer[i]->len));
 					rel_list->tcpmode=SS_AIMD_TRANSITION;
 					//rel_list->window_size/=2;
@@ -549,9 +549,9 @@ rel_timer ()
 				}
 			}
 		}
-		fprintf(stderr, "%d,%d,%d,%d\n", rel_list->receiverbuffer[0]==NULL, rel_list->send_sw->lar > rel_list->send_sw->lfs, eofrec, eofread);
+		//fprintf(stderr, "%d,%d,%d,%d\n", rel_list->receiverbuffer[0]==NULL, rel_list->send_sw->lar > rel_list->send_sw->lfs, eofrec, eofread);
 		if ( rel_list->receiverbuffer[0]==NULL && rel_list->send_sw->lar > rel_list->send_sw->lfs && eofrec && eofread){
-			fprintf(stderr,"destroy\n");
+			//fprintf(stderr,"destroy\n");
 			rel_destroy(rel_list);
 		}
 }
